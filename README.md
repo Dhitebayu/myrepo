@@ -1,22 +1,47 @@
-# myrepo
-testing my setup
+# Stroke Rural vs Urban : HDSS Sleman 20210501
 
-stroke_tx <- HDSS_2 %>% 
-  select(no_responden, ptm05a) %>% 
-  filter(ptm05a == "ya") %>% 
-  left_join(HDSS_1, by = "no_responden") 
+
+#Persiapan ataset utama
+library(ggpubr)
+library(ggplot2)
+library(tidyverse)
+library(readr)
+library(readxl)
+library(table1)
+
+HDSS_1 <- read_delim("~/Downloads/HDSS 1.csv", 
+    ";", escape_double = FALSE, trim_ws = TRUE)
+View(HDSS_1)
 
 x1 <- x %>% 
   ungroup() %>% 
   select(no_responden, asal, occup)
 
-stroke_tx <- stroke_tx %>% 
-  left_join(HDSS_nutrisi,  by = "no_responden") %>% 
-  left_join(x1, by = "no_responden")
+HDSS_2 <- read_delim("~/Downloads/HDSS 2.csv", 
+    ";", escape_double = FALSE, trim_ws = TRUE)
+View(HDSS_2)
 
+Desktop_HDSS_nutrisi <- read_excel("~/Desktop\\HDSS_nutrisi.xlsx")
+View(Desktop_HDSS_nutrisi)
 
-########################
+HDSS_nutrisi <- Desktop_HDSS_nutrisi
 
+Desktop_HDSS_DD  <- Desktop_HDSS_DD %>% 
+select(no_responden, asal)
+
+##Mengambil subyek dengan Stroke dalam terapi dari database HDSS 1 dan 2
+
+stroke_tx <- HDSS_2 %>% 
+  select(no_responden, ptm05a) %>% 
+  filter(ptm05a == "ya") %>% 
+  left_join(HDSS_1, by = "no_responden")  %>% 
+  left_join(Desktop_HDSS_DD, by = "no_responden") %>% 
+  left_join(HDSS_nutrisi,  by = "no_responden") 
+  
+colnames(stroke_tx)
+positions <- c(123:220)
+
+##Memilih variable yang akan dianalisis
 stroke_tx  <- stroke_tx  %>% 
   rename(
     age = ageyr_w1.x,
@@ -26,52 +51,97 @@ stroke_tx  <- stroke_tx  %>%
     marital = statkawin_w1.x ,
     education = art16_w1.x, 
     ethnic =  art14_w1.x, 
-    occupation = occup,
+    occupation = art18_w1.x,
     insurance =  art19_w1.x ,
     hypertension = ptm01 ,
     diabetes =   ptm03 ,
     cvd = ptm07 ,
     cancer = ptm11,
-  )
+  ) %>% 
+  select(age, sex, residence, location, marital, education, ethnic, occupation, insurance, hypertension, diabetes, cvd, cancer, no_ruta.x, positions) 
+  
 
 
+## meremove data NA dari kolom residence
+stroke_tx <- stroke_tx %>% 
+    filter(residence != "NA" )
+    
+## Membuat klasifikasi tingkat pendidikan
 
-stroke_tx <- na.omit(stroke_tx)
+stroke_tx$education <- dplyr::recode(stroke_tx$education, "sd/mi" = "Elementary",
+                                  "sltp/mts" = "Junior high school",
+                                  "slta/smk/ma" = "High school",
+                                  "d2/d3" = "College or above",
+                                  "d4/s1" = "College or above",
+                                  "s2/s3" = "College or above",
+                                  "tidak tahu" = "Unknown",
+                                  "tidak/belum pernah sekolah" = "No formal education")
 
+## membuat klasifikasi jenis pekerjaan
+
+##merubah bahasa pada row
+stroke_tx$residence <- dplyr::recode(stroke_tx$residence, "urban" = "Urban",
+                                  "rural" = "Rural")
+stroke_tx$hypertension <- dplyr::recode(stroke_tx$hypertension, "ya" = "Yes",
+                                     "tidak" = "No")
+stroke_tx$diabetes <- dplyr::recode(stroke_tx$diabetes, "ya" = "Yes",
+                                 "tidak" = "No")
+stroke_tx$cvd <- dplyr::recode(stroke_tx$cvd, "ya" = "Yes",
+                            "tidak" = "No")
+
+stroke_tx$cancer <- dplyr::recode(stroke_tx$cancer, "ya" = "Yes",
+                               "tidak" = "No")
+stroke_tx$sex <- dplyr::recode(stroke_tx$sex, "laki-laki" = "Male",
+                            "perempuan" = "Female")
+stroke_tx$insurance <- dplyr::recode(stroke_tx$insurance, "Ya" = "Yes",
+                            "Tidak" = "No")
+stroke_tx$marital <- dplyr::recode(stroke_tx$marital,"kawin" =                                    "Maried","cerai mati" = "Death divorced",
+                            "belum menikah" = "Not married", "cerai                                 hidup" = "Divorced")
+##merubah bahasa pada kolom
+
+table1::label(stroke_tx$sex)     <- "Sex"
+table1::label(stroke_tx$age)     <- "Age"
+table1::label(stroke_tx$education)     <- "Education"
+table1::label(stroke_tx$hypertension)     <- "Hypertension"
+table1::label(stroke_tx$diabetes)     <- "Diabetes"
+table1::label(stroke_tx$cvd)     <- "Cardiovascular disease"
+table1::label(stroke_tx$cancer)     <- "Cancer"
+  
+# Descriptive statistics
+ 
 stroke_tx %>% 
   group_by(no_ruta.x) %>% 
   count()
 
-
-# Factor the basic variables that
-# we're interested in
 stroke_tx$residence <- 
   factor(stroke_tx$residence)
+  
+stroke_tx %>% 
+  select(residence, age) %>% 
+  group_by(residence) %>% 
+  summarise(
+    count = n(),
+    mean = mean(age, na.rm = TRUE),
+    sd = sd(age, na.rm = TRUE)
+  )
+  
+stroke_tx %>% 
+filter(residence != "NA") %>% 
 
-table1(~ factor(sex) + age + factor(marital) + factor(education) +
-         factor(insurance) +
-         factor(hypertension)+
-         factor(diabetes) +
-         factor(cvd) +
-         factor(cancer)
-       | residence, data=stroke_tx, render.continuous=my.render.cont, render.categorical=my.render.cat)
+
+ggboxplot(stroke_tx, x = "residence", y = "age", 
+          color = "residence", palette = c("#00AFBB", "#E7B800"),
+          ylab = "age", xlab = "age")
+          
+## menampilkan Ruta saja untuk pasien stroke
+
+stroke_tx%>% 
+  group_by(no_ruta) %>% 
+  slice(1) %>% 
+  ungroup() -> stroke_tx_ruta
 
 
-## cek normality test data numerik
-
-library("ggpubr")
-ggdensity(stroke_tx$age, 
-          main = "Density plot of age",
-          xlab = "age")
-
-library(ggpubr)
-ggqqplot(stroke$age)
-
-library("car")
-qqPlot(stroke$age)
-
-shapiro.test(stroke_tx$age)
-
+##persiapan table 1 characteristics of subject
 ## custom
 
 my.render.cont <- function(x) {
@@ -96,8 +166,27 @@ labels_tx <- list(
                  cvd = "Cardiovascular diseases",
                  cancer = "Cancer"),
   groups=list("", "Residence"))
+  
 
-# Remove the word "death" from the labels, since it now appears above
+table1(~ factor(sex) + age + factor(marital) + factor(education) +
+         factor(insurance) +
+         factor(hypertension)+
+         factor(diabetes) +
+         factor(cvd) +
+         factor(cancer)
+       | residence, data=stroke_tx, render.continuous=my.render.cont, render.categorical=my.render.cat)
+
+
+## cek normality test data numerik
+
+ggdensity(stroke_tx$age, 
+          main = "Density plot of age",
+          xlab = "age")
+ggqqplot(stroke_tx$age)
+qqPlot(stroke_tx$age)
+shapiro.test(stroke_tx$age)
+
+
 levels(stroke_tx$residence) <- c("Urban, Rural")
 
 View(stroke)
@@ -107,108 +196,6 @@ table1(strata_tx, labels_tx,groupspan=c(1, 2),extra.col=list(`P-value`=pvalue),
 
 table1(~ sex + age + education + occupation + hypertension + diabetes + cvd + cancer | residence,
        data=stroke_tx, overall=F, extra.col=list(`P-value`=pvalue),  render.continuous=my.render.cont, render.categorical=my.render.cat)
-
-library(dplyr)
-
-
-
-
-stroke_tx$education <- dplyr::recode(stroke_tx$education, "sd/mi" = "Elementary",
-                                  "sltp/mts" = "Junior high school",
-                                  "slta/smk/ma" = "High school",
-                                  "d2/d3" = "College or above",
-                                  "d4/s1" = "College or above",
-                                  "s2/s3" = "College or above",
-                                  "tidak tahu" = "Unknown",
-                                  "tidak/belum pernah sekolah" = "No formal education")
-
-stroke_tx$residence <- dplyr::recode(stroke_tx$residence, "urban" = "Urban",
-                                  "rural" = "Rural")
-stroke_tx$hypertension <- dplyr::recode(stroke_tx$hypertension, "ya" = "Yes",
-                                     "tidak" = "No")
-stroke_tx$diabetes <- dplyr::recode(stroke_tx$diabetes, "ya" = "Yes",
-                                 "tidak" = "No")
-stroke_tx$cvd <- dplyr::recode(stroke_tx$cvd, "ya" = "Yes",
-                            "tidak" = "No")
-
-stroke_tx$cancer <- dplyr::recode(stroke_tx$cancer, "ya" = "Yes",
-                               "tidak" = "No")
-stroke_tx$sex <- dplyr::recode(stroke_tx$sex, "laki-laki" = "Male",
-                            "perempuan" = "Female")
-
-
-detach("package:car", unload=TRUE)
-
-# stats
-
-chisq.test(stroke$diabetes, stroke$residence, correct=FALSE)
-chisq.test(stroke$cvd, stroke$residence, correct=FALSE)
-chisq.test(stroke$hypertension, stroke$residence, correct=FALSE)
-chisq.test(stroke$sex, stroke$residence, correct=FALSE)
-t.test(stroke$age, stroke$residence)
-
-stroke_tx %>% 
-  select(residence, age) %>% 
-  group_by(residence) %>% 
-  summarise(
-    count = n(),
-    mean = mean(age, na.rm = TRUE),
-    sd = sd(age, na.rm = TRUE)
-  )
-
-
-
-library("ggpubr")
-ggboxplot(stroke_tx, x = "residence", y = "age", 
-          color = "residence", palette = c("#00AFBB", "#E7B800"),
-          ylab = "age", xlab = "age")
-
-
-
-
-
-
-table1::label(stroke_tx$sex)     <- "Sex"
-table1::label(stroke_tx$age)     <- "Age"
-table1::label(stroke_tx$education)     <- "Education"
-table1::label(stroke_tx$hypertension)     <- "Hypertension"
-table1::label(stroke_tx$diabetes)     <- "Diabetes"
-table1::label(stroke_tx$cvd)     <- "Cardiovascular disease"
-table1::label(stroke_tx$cancer)     <- "Cancer"
-
-stroke_tx$education <- dplyr::recode(stroke_tx$education, "sd/mi" = "Elementary",
-                                  "sltp/mts" = "Junior high school",
-                                  "slta/smk/ma" = "High school",
-                                  "d2/d3" = "College or above",
-                                  "d4/s1" = "College or above",
-                                  "s2/s3" = "College or above",
-                                  "tidak tahu" = "Unknown",
-                                  "tidak/belum pernah sekolah" = "No formal education")
-
-
-
-
-
-## berapa RUTA dari 505 subyek pasien yag stroke?
-
-xruta_a <- x %>% 
-  filter(ptm05a == "ya") 
-
-stroke_tx_a <- xruta_a %>% 
-  right_join(stroke_tx, by = "no_responden") %>% 
-  group_by(no_ruta)
-
-
-## menampilkan Ruta saja untuk pasien stroke
-
-stroke_tx_a %>% 
-  group_by(no_ruta) %>% 
-  slice(1) %>% 
-  ungroup() -> stroke_tx_ruta
-
-#download dataset HDSS nutrisi llalu joint dengan data stroke untuk menambahkan kolom nutrisi
-stroke <- HDSS_nutrisi %>% 
-  right_join(stroke)
 
 # menghitung kalori 
 names(stroke)[...3] <- "asal"
@@ -366,6 +353,7 @@ stroke_tx_K <- stroke_tx_K[c("4","3","1","2"),]
 
 #lolipop
 
+##Serat
 
 Stroke_tx_S_lol
 Stroke_tx_S_lol <- t(stroke_tx_S) %>%
@@ -386,12 +374,12 @@ Stroke_tx_S_lol <- Stroke_tx_S_lol %>%
     values_to = "value"
   )
 
-Stroke_tx_S_lol$Type <- recode(Stroke_tx_S_lol$Type, serat_beras = "Rice")
-Stroke_tx_S_lol$Type <- recode(Stroke_tx_S_lol$Type, serat_umbi = "Tubers")
-Stroke_tx_S_lol$Type <- recode(Stroke_tx_S_lol$Type, serat_tahu = "Tofu")
-Stroke_tx_S_lol$Type <- recode(Stroke_tx_S_lol$Type, serat_roti = "Bread")
-Stroke_tx_S_lol$Type <- recode(Stroke_tx_S_lol$Type, other = "Others")
-Stroke_tx_S_lol$Type <- recode(Stroke_tx_S_lol$Type, serat_tempe = "Tempeh")
+Stroke_tx_S_lol$Type <- dplyr::recode(Stroke_tx_S_lol$Type, serat_beras = "Rice")
+Stroke_tx_S_lol$Type <- dplyr::recode(Stroke_tx_S_lol$Type, serat_umbi = "Tubers")
+Stroke_tx_S_lol$Type <- dplyr::recode(Stroke_tx_S_lol$Type, serat_tahu = "Tofu")
+Stroke_tx_S_lol$Type <- dplyr::recode(Stroke_tx_S_lol$Type, serat_roti = "Bread")
+Stroke_tx_S_lol$Type <- dplyr::recode(Stroke_tx_S_lol$Type, other = "Others")
+Stroke_tx_S_lol$Type <- dplyr::recode(Stroke_tx_S_lol$Type, serat_tempe = "Tempeh")
 Stroke_tx_S_lol
 
 s_lol<- ggdotchart(
@@ -404,9 +392,9 @@ s <- s_lol +coord_flip()+ labs(title = "Fiber",
                                y = "percentage (%)") +
   theme_light()  # using a custom th
 s
-library(ggpubr)
 
-# protein
+
+## protein
 
 Stroke_tx_P_lol <- t(stroke_tx_P) %>%
   as.data.frame() %>%
@@ -426,12 +414,12 @@ Stroke_tx_P_lol <- Stroke_tx_P_lol %>%
     values_to = "value"
   )
 
-Stroke_tx_P_lol$Type <- recode(Stroke_tx_P_lol$Type, p_beras = "Rice")
-Stroke_tx_P_lol$Type <- recode(Stroke_tx_P_lol$Type, p_ayam = "Poultry")
-Stroke_tx_P_lol$Type <- recode(Stroke_tx_P_lol$Type, p_tahu = "Tofu")
-Stroke_tx_P_lol$Type <- recode(Stroke_tx_P_lol$Type, p_telur = "Egg")
-Stroke_tx_P_lol$Type <- recode(Stroke_tx_P_lol$Type, other = "Others")
-Stroke_tx_P_lol$Type <- recode(Stroke_tx_P_lol$Type, p_tempe = "Tempeh")
+Stroke_tx_P_lol$Type <- dplyr::recode(Stroke_tx_P_lol$Type, p_beras = "Rice")
+Stroke_tx_P_lol$Type <- dplyr::recode(Stroke_tx_P_lol$Type, p_ayam = "Poultry")
+Stroke_tx_P_lol$Type <- dplyr::recode(Stroke_tx_P_lol$Type, p_tahu = "Tofu")
+Stroke_tx_P_lol$Type <- dplyr::recode(Stroke_tx_P_lol$Type, p_telur = "Egg")
+Stroke_tx_P_lol$Type <- dplyr::recode(Stroke_tx_P_lol$Type, other = "Others")
+Stroke_tx_P_lol$Type <- dplyr::recode(Stroke_tx_P_lol$Type, p_tempe = "Tempeh")
 
 
 p_lol<- ggdotchart(
@@ -446,7 +434,7 @@ p <- p_lol +coord_flip()+ labs(title = "Protein",
 p
 
 
-#lemak
+## lemak
 
 Stroke_tx_L_lol <- t(stroke_tx_L) %>%
   as.data.frame() %>%
@@ -466,14 +454,12 @@ Stroke_tx_L_lol <- Stroke_tx_L_lol %>%
     values_to = "value"
   )
 
-Stroke_tx_L_lol$Type <- recode(Stroke_tx_L_lol$Type, l_beras = "Rice")
-Stroke_tx_L_lol$Type <- recode(Stroke_tx_L_lol$Type, l_ayam = "Poultry")
-Stroke_tx_L_lol$Type <- recode(Stroke_tx_L_lol$Type, l_tahu = "Tofu")
-Stroke_tx_L_lol$Type <- recode(Stroke_tx_L_lol$Type, l_telur = "Egg")
-Stroke_tx_L_lol$Type <- recode(Stroke_tx_L_lol$Type, other = "Others")
-Stroke_tx_L_lol$Type <- recode(Stroke_tx_L_lol$Type, l_tempe = "Tempeh")
-
-
+Stroke_tx_L_lol$Type <- dplyr::recode(Stroke_tx_L_lol$Type, l_beras = "Rice")
+Stroke_tx_L_lol$Type <- dplyr::recode(Stroke_tx_L_lol$Type, l_ayam = "Poultry")
+Stroke_tx_L_lol$Type <- dplyr::recode(Stroke_tx_L_lol$Type, l_tahu = "Tofu")
+Stroke_tx_L_lol$Type <- dplyr::recode(Stroke_tx_L_lol$Type, l_telur = "Egg")
+Stroke_tx_L_lol$Type <- dplyr::recode(Stroke_tx_L_lol$Type, other = "Others")
+Stroke_tx_L_lol$Type <- dplyr::recode(Stroke_tx_L_lol$Type, l_tempe = "Tempeh")
 
 
 l_lol<- ggdotchart(
@@ -487,7 +473,7 @@ l <- l_lol +coord_flip()+ labs(title = "Fat",
   theme_light()  # using a custom th
 l
 
-# karbohidrat
+## karbohidrat
 Stroke_tx_K_lol
 Stroke_tx_K_lol <- t(stroke_tx_K) %>%
   as.data.frame() %>%
@@ -507,12 +493,12 @@ Stroke_tx_K_lol <- Stroke_tx_K_lol %>%
     values_to = "value"
   )
 
-Stroke_tx_K_lol$Type <- recode(Stroke_tx_K_lol$Type, k_beras = "Rice")
-Stroke_tx_K_lol$Type <- recode(Stroke_tx_K_lol$Type, k_umbi = "Tuber")
-Stroke_tx_K_lol$Type <- recode(Stroke_tx_K_lol$Type, k_gula = "Sugar")
-Stroke_tx_K_lol$Type <- recode(Stroke_tx_K_lol$Type, k_jagung = "Corn")
-Stroke_tx_K_lol$Type <- recode(Stroke_tx_K_lol$Type, other = "Others")
-Stroke_tx_K_lol$Type <- recode(Stroke_tx_K_lol$Type, k_tahu = "Tofu")
+Stroke_tx_K_lol$Type <- dplyr::recode(Stroke_tx_K_lol$Type, k_beras = "Rice")
+Stroke_tx_K_lol$Type <- dplyr::recode(Stroke_tx_K_lol$Type, k_umbi = "Tuber")
+Stroke_tx_K_lol$Type <- dplyr::recode(Stroke_tx_K_lol$Type, k_gula = "Sugar")
+Stroke_tx_K_lol$Type <- dplyr::recode(Stroke_tx_K_lol$Type, k_jagung = "Corn")
+Stroke_tx_K_lol$Type <- dplyr::recode(Stroke_tx_K_lol$Type, other = "Others")
+Stroke_tx_K_lol$Type <- dplyr::recode(Stroke_tx_K_lol$Type, k_tahu = "Tofu")
 
 
 k_lol<- ggdotchart(
@@ -526,7 +512,7 @@ k <- k_lol +coord_flip()+ labs(title = "Carbohydrate",
   theme_light()  # using a custom th
 k
 
-#Energy
+## Energy
 Stroke_tx_E_lol
 
 Stroke_tx_E_lol <- t(stroke_tx_E) %>%
@@ -547,12 +533,12 @@ Stroke_tx_E_lol <- Stroke_tx_E_lol %>%
     values_to = "value"
   )
 
-Stroke_tx_E_lol$Type <- recode(Stroke_tx_E_lol$Type, e_beras = "Rice")
-Stroke_tx_E_lol$Type <- recode(Stroke_tx_E_lol$Type, e_ayam = "Poultry")
-Stroke_tx_E_lol$Type <- recode(Stroke_tx_E_lol$Type, e_gula = "Sugar")
-Stroke_tx_E_lol$Type <- recode(Stroke_tx_E_lol$Type, k_tempe = "Tempeh")
-Stroke_tx_E_lol$Type <- recode(Stroke_tx_E_lol$Type, other = "Others")
-Stroke_tx_E_lol$Type <- recode(Stroke_tx_E_lol$Type, k_tahu = "Tofu")
+Stroke_tx_E_lol$Type <- dplyr::recode(Stroke_tx_E_lol$Type, e_beras = "Rice")
+Stroke_tx_E_lol$Type <- dplyr::recode(Stroke_tx_E_lol$Type, e_ayam = "Poultry")
+Stroke_tx_E_lol$Type <- dplyr::recode(Stroke_tx_E_lol$Type, e_gula = "Sugar")
+Stroke_tx_E_lol$Type <- dplyr::recode(Stroke_tx_E_lol$Type, k_tempe = "Tempeh")
+Stroke_tx_E_lol$Type <- dplyr::recode(Stroke_tx_E_lol$Type, other = "Others")
+Stroke_tx_E_lol$Type <- dplyr::recode(Stroke_tx_E_lol$Type, k_tahu = "Tofu")
 
 
 e_lol<- ggdotchart(
@@ -566,30 +552,9 @@ e <- e_lol +coord_flip()+ labs(title = "Energy",
   theme_light()  # using a custom th
 e
 
+## menggabungkan semua dot chart
 ggarrange(e,p,l,k,s,ncol = 2, nrow = 3, labels = "AUTO")
 
-
-#####
-stroke %>% 
-  select(asal, ptm05a) %>% 
-  filter(ptm05a == "ya") %>% 
-  group_by(asal, ptm05a ) %>% 
-  summarise(n = n())
-
-
-stroke_tx_x  <- stroke_tx%>% mutate(
-  occup_lump = fct_lump(occupation, n = 7)) 
-  
-stroke_tx_x <- stroke_tx_x %>% drop_na(occup_lump)
-stroke_tx_x
-  
-stroke_tx_x %>% ggplot(aes(x=occup_lump)) + 
-  geom_bar(color = 'black', fill = 'firebrick') + 
-  theme(axis.text.x = element_text(angle = 45, hjust = 1))+
-  xlab("Occupation") +
-  ylab("Count")
-
-
-
+#Selesai
 
 
